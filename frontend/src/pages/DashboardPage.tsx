@@ -96,14 +96,14 @@ export default function DashboardPage() {
           color="blue"
         />
         <KPICard
-          title="CxC Pendiente"
+          title="Cuentas Por Cobrar Pendiente"
           value={formatCurrency(kpis.cxc_pendiente)}
           subtitle="Cuentas por cobrar"
           icon={<Users className="w-5 h-5 text-purple-400" />}
           color="purple"
         />
         <KPICard
-          title="CxP Pendiente"
+          title="Cuentas Por Pagar Pendiente"
           value={formatCurrency(kpis.cxp_pendiente)}
           subtitle="Cuentas por pagar"
           icon={<Truck className="w-5 h-5 text-red-400" />}
