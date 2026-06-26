@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: app-contabilidad
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql+asyncpg://neondb_owner:npg_3cY0yoMxnfah@ep-red-lab-atfxoamb-pooler.c-9.us-east-1.aws.neon.tech/neondb
+      - key: DATABASE_SYNC_URL
+        value: postgresql://neondb_owner:npg_3cY0yoMxnfah@ep-red-lab-atfxoamb-pooler.c-9.us-east-1.aws.neon.tech/neondb
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: '["http://localhost:5173","http://localhost:8000","https://app-contabilidad.onrender.com"]'
