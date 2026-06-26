@@ -13,7 +13,7 @@ from app.domain.models.periodo import PeriodoContable
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
 async def listar_periodos(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { UserPlus, ToggleLeft, ToggleRight, Shield, Pencil } from 'lucide-react'
+import { api } from '../services/api'
 
 interface Usuario {
   id: string
@@ -23,8 +24,8 @@ export default function UsuariosPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/v1/usuarios?solo_activos=false').then((r) => r.json()),
-      fetch('/api/v1/roles').then((r) => r.json()),
+      api.getUsuarios(),
+      api.getRoles(),
     ]).then(([users, r]) => {
       setUsuarios(users)
       setRoles(r)
@@ -33,31 +34,21 @@ export default function UsuariosPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const method = editId ? 'PUT' : 'POST'
-    const url = editId ? `/api/v1/usuarios/${editId}` : '/api/v1/usuarios'
     const body: any = { ...form }
     if (!body.password) delete body.password
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-      body: JSON.stringify(body),
-    })
-
-    if (res.ok) {
-      const updated = await res.json()
+    try {
+      const updated = editId
+        ? await api.actualizarUsuario(editId, body)
+        : await api.crearUsuario(body)
       setUsuarios((prev) =>
         editId ? prev.map((u) => (u.id === editId ? updated : u)) : [...prev, updated]
       )
       if (editId && selectedRoles.length > 0) {
-        await fetch(`/api/v1/usuarios/${editId}/roles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-          body: JSON.stringify(selectedRoles),
-        })
+        await api.asignarRoles(editId, selectedRoles)
       }
       resetForm()
-    }
+    } catch {}
   }
 
   function editUser(u: Usuario) {
@@ -75,15 +66,10 @@ export default function UsuariosPage() {
   }
 
   async function toggleActivo(u: Usuario) {
-    const res = await fetch(`/api/v1/usuarios/${u.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-      body: JSON.stringify({ activo: !u.activo }),
-    })
-    if (res.ok) {
-      const updated = await res.json()
+    try {
+      const updated = await api.actualizarUsuario(u.id, { activo: !u.activo })
       setUsuarios((prev) => prev.map((p) => (p.id === u.id ? updated : p)))
-    }
+    } catch {}
   }
 
   return (

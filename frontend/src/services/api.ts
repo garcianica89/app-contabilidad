@@ -44,14 +44,19 @@ export const api = {
     request<any>(`/reportes/estado-resultados?periodo_id=${periodoId}`),
 
   getFlujoEfectivo: (desde: string, hasta: string) =>
-    request<any>('/reportes/flujo-efectivo', {
-      params: { fecha_desde: desde, fecha_hasta: hasta },
-    } as any),
+    request<any>(`/reportes/flujo-efectivo?fecha_desde=${desde}&fecha_hasta=${hasta}`),
 
   getAntiguedadCxC: () => request<any[]>('/cuentas-por-cobrar/antiguedad'),
   getAntiguedadCxP: () => request<any[]>('/cuentas-por-pagar/antiguedad'),
 
   getPeriodos: () => request<any[]>('/periodos'),
 
-  getEmpresas: () => request<any[]>('/empresas'),
+  getUsuarios: () => request<any[]>('/usuarios?solo_activos=false'),
+  getRoles: () => request<any[]>('/roles'),
+  crearUsuario: (data: any) =>
+    request<any>('/usuarios', { method: 'POST', body: JSON.stringify(data) }),
+  actualizarUsuario: (id: string, data: any) =>
+    request<any>(`/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  asignarRoles: (id: string, roles: string[]) =>
+    request<any>(`/usuarios/${id}/roles`, { method: 'POST', body: JSON.stringify(roles) }),
 }

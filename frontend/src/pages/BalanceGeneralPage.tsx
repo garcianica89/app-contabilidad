@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import ChartCard from '../components/ChartCard'
 import DataTable from '../components/DataTable'
 import PeriodFilter from '../components/PeriodFilter'
+import { api } from '../services/api'
 
 const formatCurrency = (v: number) =>
   'C$ ' + (v ?? 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })
@@ -15,11 +16,7 @@ export default function BalanceGeneralPage() {
   useEffect(() => {
     if (!periodoId) return
     setLoading(true)
-    fetch(`/api/v1/reportes/balance-general?periodo_id=${periodoId}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    api.getBalanceGeneral(periodoId).then(setData).catch(() => {}).finally(() => setLoading(false))
   }, [periodoId])
 
   const activo = data?.activo || {}

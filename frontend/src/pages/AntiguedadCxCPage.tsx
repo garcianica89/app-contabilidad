@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import ChartCard from '../components/ChartCard'
 import DataTable from '../components/DataTable'
+import { api } from '../services/api'
 
 const formatCurrency = (v: number) =>
   'C$ ' + (v ?? 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })
@@ -11,11 +12,7 @@ export default function AntiguedadCxCPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/v1/cxc/antiguedad')
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    api.getAntiguedadCxC().then(setData).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   return (

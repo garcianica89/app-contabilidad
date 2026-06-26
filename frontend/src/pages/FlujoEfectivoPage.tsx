@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import ChartCard from '../components/ChartCard'
 import DataTable from '../components/DataTable'
+import { api } from '../services/api'
 
 const formatCurrency = (v: number) =>
   'C$ ' + (v ?? 0).toLocaleString('es-NI', { minimumFractionDigits: 2 })
@@ -15,11 +16,7 @@ export default function FlujoEfectivoPage() {
     const inicio = new Date(hoy.getFullYear(), 0, 1).toISOString().split('T')[0]
     const fin = hoy.toISOString().split('T')[0]
 
-    fetch(`/api/v1/reportes/flujo-efectivo?fecha_desde=${inicio}&fecha_hasta=${fin}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    api.getFlujoEfectivo(inicio, fin).then(setData).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   const op = data?.actividades_operacion || {}

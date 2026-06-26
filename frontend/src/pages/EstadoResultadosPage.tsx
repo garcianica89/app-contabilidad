@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import ChartCard from '../components/ChartCard'
 import DataTable from '../components/DataTable'
 import PeriodFilter from '../components/PeriodFilter'
+import { api } from '../services/api'
 
 const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899']
 const formatCurrency = (v: number) =>
@@ -16,11 +17,7 @@ export default function EstadoResultadosPage() {
   useEffect(() => {
     if (!periodoId) return
     setLoading(true)
-    fetch(`/api/v1/reportes/estado-resultados?periodo_id=${periodoId}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    api.getEstadoResultados(periodoId).then(setData).catch(() => {}).finally(() => setLoading(false))
   }, [periodoId])
 
   const ingresos = data?.ingresos?.cuentas || []

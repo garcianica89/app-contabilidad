@@ -11,6 +11,7 @@ import KPICard from '../components/KPICard'
 import ChartCard from '../components/ChartCard'
 import DataTable from '../components/DataTable'
 import PeriodFilter from '../components/PeriodFilter'
+import { api } from '../services/api'
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
 
@@ -21,9 +22,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setLoading(true)
-    const params = periodoId ? `?periodo_id=${periodoId}` : ''
-    fetch(`/api/v1/bi/dashboard${params}`)
-      .then((r) => r.json())
+    api.getDashboard(periodoId || undefined)
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false))

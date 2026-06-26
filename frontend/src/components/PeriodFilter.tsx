@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { api } from '../services/api'
 
 interface Periodo {
   id: string
@@ -16,10 +17,7 @@ export default function PeriodFilter({
   const [periodos, setPeriodos] = useState<Periodo[]>([])
 
   useEffect(() => {
-    fetch('/api/v1/periodos')
-      .then((r) => r.json())
-      .then(setPeriodos)
-      .catch(() => {})
+    api.getPeriodos().then(setPeriodos).catch(() => {})
   }, [])
 
   return (
