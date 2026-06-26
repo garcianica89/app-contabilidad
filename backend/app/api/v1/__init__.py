@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     auth, empresas, usuarios, roles, cuentas, productos,
     clientes, proveedores, asientos, caja, reportes, cxc, cxp,
-    bi, periodos,
+    bi, periodos, bancos,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -22,3 +22,4 @@ api_router.include_router(cxc.router, prefix="/cuentas-por-cobrar", tags=["Cuent
 api_router.include_router(cxp.router, prefix="/cuentas-por-pagar", tags=["Cuentas por Pagar"])
 api_router.include_router(bi.router, prefix="/bi", tags=["Business Intelligence"])
 api_router.include_router(periodos.router, prefix="/periodos", tags=["Periodos"])
+api_router.include_router(bancos.router, prefix="/bancos", tags=["Bancos"])

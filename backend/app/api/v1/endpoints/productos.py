@@ -68,6 +68,38 @@ async def kardex_producto(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Usuario, Depends(get_current_user)],
 ):
+    return result.scalars().all()
+
+
+@router.put("/{producto_id}", response_model=ProductoResponse)
+async def actualizar_producto(
+    producto_id: uuid.UUID,
+    data: ProductoCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    result = await db.execute(
+        select(Producto).where(
+            Producto.id == producto_id,
+            Producto.empresa_id == current_user.empresa_id,
+        )
+    )
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(p, key, value)
+    await db.commit()
+    await db.refresh(p)
+    return p
+
+
+@router.get("/{producto_id}/kardex")
+async def kardex_producto(
+    producto_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
     from app.domain.models.producto import KardexMovimiento
 
     result = await db.execute(

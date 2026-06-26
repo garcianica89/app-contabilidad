@@ -51,6 +51,12 @@ export const api = {
 
   getPeriodos: () => request<any[]>('/periodos'),
 
+  getClientes: () => request<any[]>('/clientes'),
+  crearCliente: (data: any) =>
+    request<any>('/clientes', { method: 'POST', body: JSON.stringify(data) }),
+  actualizarCliente: (id: string, data: any) =>
+    request<any>(`/clientes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
   getUsuarios: () => request<any[]>('/usuarios?solo_activos=false'),
   getRoles: () => request<any[]>('/roles'),
   crearUsuario: (data: any) =>
@@ -59,4 +65,39 @@ export const api = {
     request<any>(`/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   asignarRoles: (id: string, roles: string[]) =>
     request<any>(`/usuarios/${id}/roles`, { method: 'POST', body: JSON.stringify(roles) }),
+
+  getProveedores: () => request<any[]>('/proveedores'),
+  crearProveedor: (data: any) =>
+    request<any>('/proveedores', { method: 'POST', body: JSON.stringify(data) }),
+  actualizarProveedor: (id: string, data: any) =>
+    request<any>(`/proveedores/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  getProductos: () => request<any[]>('/productos'),
+  getProducto: (id: string) => request<any>(`/productos/${id}`),
+  crearProducto: (data: any) =>
+    request<any>('/productos', { method: 'POST', body: JSON.stringify(data) }),
+  actualizarProducto: (id: string, data: any) =>
+    request<any>(`/productos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  getFacturas: (params?: { cliente_id?: string; estado?: string }) => {
+    const q = new URLSearchParams()
+    if (params?.cliente_id) q.set('cliente_id', params.cliente_id)
+    if (params?.estado) q.set('estado', params.estado)
+    const qs = q.toString()
+    return request<any[]>(`/cuentas-por-cobrar/facturas${qs ? `?${qs}` : ''}`)
+  },
+  crearFactura: (data: any) =>
+    request<any>('/cuentas-por-cobrar/facturas', { method: 'POST', body: JSON.stringify(data) }),
+
+  getCuentasBanco: () => request<any[]>('/bancos'),
+  crearCuentaBanco: (data: any) =>
+    request<any>('/bancos', { method: 'POST', body: JSON.stringify(data) }),
+  actualizarCuentaBanco: (id: string, data: any) =>
+    request<any>(`/bancos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getMovimientosBanco: (cuenta_id?: string) => {
+    const q = cuenta_id ? `?cuenta_id=${cuenta_id}` : ''
+    return request<any[]>(`/bancos/movimientos${q}`)
+  },
+  crearMovimientoBanco: (data: any) =>
+    request<any>('/bancos/movimientos', { method: 'POST', body: JSON.stringify(data) }),
 }

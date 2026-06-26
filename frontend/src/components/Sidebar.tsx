@@ -7,12 +7,22 @@ import {
   ArrowRightLeft,
   Users,
   Truck,
+  Database,
+  ShoppingCart,
+  Building2,
+  FileText,
   Settings,
   X,
 } from 'lucide-react'
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/clientes', label: 'Clientes', icon: Users },
+  { to: '/proveedores', label: 'Proveedores', icon: Building2 },
+  { to: '/inventario', label: 'Inventario', icon: Database },
+  { to: '/facturacion', label: 'Facturacion', icon: FileText },
+  { to: '/bancos', label: 'Bancos', icon: PiggyBank },
+  { type: 'divider' as const },
   { to: '/balance-general', label: 'Balance General', icon: BarChart3 },
   { to: '/estado-resultados', label: 'Estado Resultados', icon: TrendingUp },
   { to: '/flujo-efectivo', label: 'Flujo de Efectivo', icon: ArrowRightLeft },
@@ -43,24 +53,28 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         </div>
 
         <nav className="p-3 space-y-1">
-          {links.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.to === '/'}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-primary-600/20 text-primary-400 border border-primary-500/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                }`
-              }
-            >
-              <link.icon className="w-5 h-5" />
-              {link.label}
-            </NavLink>
-          ))}
+          {links.map((link) =>
+            'type' in link ? (
+              <div key="divider" className="border-t border-slate-800 my-3" />
+            ) : (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.to === '/'}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-primary-600/20 text-primary-400 border border-primary-500/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  }`
+                }
+              >
+                <link.icon className="w-5 h-5" />
+                {link.label}
+              </NavLink>
+            )
+          )}
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800">

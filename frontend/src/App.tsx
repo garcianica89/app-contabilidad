@@ -10,6 +10,11 @@ import FlujoEfectivoPage from './pages/FlujoEfectivoPage'
 import AntiguedadCxCPage from './pages/AntiguedadCxCPage'
 import AntiguedadCxPPage from './pages/AntiguedadCxPPage'
 import UsuariosPage from './pages/UsuariosPage'
+import ClientesPage from './pages/ClientesPage'
+import ProveedoresPage from './pages/ProveedoresPage'
+import InventarioPage from './pages/InventarioPage'
+import FacturacionPage from './pages/FacturacionPage'
+import BancosPage from './pages/BancosPage'
 
 function ProtectedLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -42,6 +47,11 @@ export default function App() {
         <Route path="/flujo-efectivo" element={<FlujoEfectivoPage />} />
         <Route path="/antiguedad-cxc" element={<AntiguedadCxCPage />} />
         <Route path="/antiguedad-cxp" element={<AntiguedadCxPPage />} />
+        <Route path="/clientes" element={<ClientesPage />} />
+        <Route path="/proveedores" element={<ProveedoresPage />} />
+        <Route path="/inventario" element={<InventarioPage />} />
+        <Route path="/facturacion" element={<FacturacionPage />} />
+        <Route path="/bancos" element={<BancosPage />} />
         <Route path="/usuarios" element={<UsuariosPage />} />
       </Route>
     </Routes>

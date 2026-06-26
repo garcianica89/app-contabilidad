@@ -78,3 +78,26 @@ async def crear_proveedor(
     await db.commit()
     await db.refresh(proveedor)
     return proveedor
+
+
+@router.put("/{proveedor_id}", response_model=ProveedorResponse)
+async def actualizar_proveedor(
+    proveedor_id: uuid.UUID,
+    data: ProveedorCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    p = await db.execute(
+        select(Proveedor).where(
+            Proveedor.id == proveedor_id,
+            Proveedor.empresa_id == current_user.empresa_id,
+        )
+    )
+    prov = p.scalar_one_or_none()
+    if not prov:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(prov, key, value)
+    await db.commit()
+    await db.refresh(prov)
+    return prov

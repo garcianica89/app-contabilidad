@@ -57,3 +57,26 @@ async def crear_cliente(
     await db.commit()
     await db.refresh(cliente)
     return cliente
+
+
+@router.put("/{cliente_id}", response_model=ClienteResponse)
+async def actualizar_cliente(
+    cliente_id: uuid.UUID,
+    data: ClienteCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    cliente = await db.execute(
+        select(Cliente).where(
+            Cliente.id == cliente_id,
+            Cliente.empresa_id == current_user.empresa_id,
+        )
+    )
+    c = cliente.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(c, key, value)
+    await db.commit()
+    await db.refresh(c)
+    return c
