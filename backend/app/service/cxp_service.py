@@ -7,10 +7,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.proveedor import Proveedor
-from app.domain.models.factura_compra import FacturaCompra, FacturaCompraLinea
+from app.domain.models.factura_compra import FacturaCompra
 from app.domain.models.orden_compra import OrdenCompra
-from app.domain.models.producto import Producto
-from app.service.accounting.accounting_engine import AccountingEngine
+from app.service.document_engine import DocumentEngine
 
 
 class CxpService:
@@ -72,83 +71,49 @@ class CxpService:
         )
         total = subtotal - Decimal(str(descuento)) + Decimal(str(iva)) - Decimal(str(retencion_ir))
 
-        factura = FacturaCompra(
-            empresa_id=self.empresa_id,
-            numero=numero,
-            proveedor_id=proveedor_id,
-            orden_id=orden_id,
-            fecha=fecha,
-            fecha_vencimiento=fecha_vencimiento,
-            subtotal=subtotal,
-            descuento=Decimal(str(descuento)),
-            iva=Decimal(str(iva)),
-            retencion_ir=Decimal(str(retencion_ir)),
-            total=total,
-            moneda_id=moneda_id,
-            estado="PENDIENTE",
-        )
-        self.db.add(factura)
-        await self.db.flush()
-
-        for l in lineas:
-            linea = FacturaCompraLinea(
-                factura_id=factura.id,
-                producto_id=l["producto_id"],
-                cantidad=Decimal(str(l["cantidad"])),
-                precio_unitario=Decimal(str(l["precio_unitario"])),
-                descuento=Decimal(str(l.get("descuento", 0))),
-                subtotal=Decimal(str(l["cantidad"])) * Decimal(str(l["precio_unitario"])),
-            )
-            self.db.add(linea)
-
-            producto = await self.db.get(Producto, l["producto_id"])
-            if producto:
-                costo_total_anterior = producto.costo_promedio * producto.stock_actual
-                costo_nueva_compra = Decimal(str(l["cantidad"])) * Decimal(str(l["precio_unitario"]))
-                cantidad_total = producto.stock_actual + Decimal(str(l["cantidad"]))
-
-                if cantidad_total > 0:
-                    producto.costo_promedio = (
-                        costo_total_anterior + costo_nueva_compra
-                    ) / cantidad_total
-                producto.stock_actual += Decimal(str(l["cantidad"]))
-
-        asiento_result = await self._generar_asiento_compra(
-            factura, fecha, proveedor_id
-        )
-        if asiento_result:
-            factura.asiento_id = asiento_result.get('asiento_id')
-
-        await self.db.commit()
-        await self.db.refresh(factura)
-        return factura
-
-    async def _generar_asiento_compra(
-        self, factura: FacturaCompra, fecha: date, proveedor_id: uuid.UUID
-    ) -> Optional[dict]:
-        """Genera asiento usando AccountingEngine (template-based, zero IFs)."""
-        proveedor = await self.db.get(Proveedor, proveedor_id)
-        engine = AccountingEngine(self.db)
         data = {
-            'fecha': fecha.isoformat(),
-            'numero': factura.numero,
-            'concepto': f"Compra segun factura {factura.numero}",
-            'subtotal': float(factura.subtotal),
-            'iva': float(factura.iva),
-            'descuento': float(factura.descuento),
-            'retencion_ir': float(factura.retencion_ir),
-            'total': float(factura.total),
+            'numero': numero,
             'proveedor_id': str(proveedor_id),
-            'proveedor_nombre': proveedor.nombre if proveedor else '',
-            'moneda_id': str(factura.moneda_id),
+            'orden_id': str(orden_id) if orden_id else None,
+            'fecha': fecha.isoformat(),
+            'fecha_vencimiento': fecha_vencimiento.isoformat() if fecha_vencimiento else None,
+            'subtotal': float(subtotal),
+            'descuento': descuento,
+            'iva': iva,
+            'retencion_ir': retencion_ir,
+            'total': float(total),
+            'moneda_id': str(moneda_id),
+            'lineas': [
+                {
+                    'producto_id': str(l['producto_id']),
+                    'cantidad': float(l['cantidad']),
+                    'precio_unitario': float(l['precio_unitario']),
+                    'descuento': float(l.get('descuento', 0)),
+                }
+                for l in lineas
+            ],
+            'afecta_inventario': True,
+            'afecta_cxp': True,
+            'genera_asiento': True,
         }
-        return await engine.generate_from_event(
-            event_type='COMPRA',
-            module='compras',
+
+        engine = DocumentEngine(self.db)
+        result = await engine.process(
+            document_type='COMPRA',
+            subtype_code='COMPRA',
+            action='CREATE',
             data=data,
+            user_id=self.usuario_id,
             company_id=self.empresa_id,
-            document_id=factura.id,
         )
+
+        if not result.success:
+            raise ValueError('; '.join(result.errors))
+
+        factura = await self.db.execute(
+            select(FacturaCompra).where(FacturaCompra.id == result.document_id)
+        )
+        return factura.scalar_one()
 
     async def estado_cuenta_proveedor(
         self, proveedor_id: uuid.UUID, fecha_corte: Optional[date] = None

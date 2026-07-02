@@ -7,9 +7,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.cliente import Cliente
-from app.domain.models.factura_venta import FacturaVenta, FacturaVentaLinea
-from app.domain.models.producto import Producto
-from app.domain.models.caja import MovimientoCaja
+from app.domain.models.factura_venta import FacturaVenta
+from app.service.document_engine import DocumentEngine
 from app.service.accounting.accounting_engine import AccountingEngine
 
 
@@ -39,112 +38,48 @@ class CxcService:
         )
         total = subtotal - Decimal(str(descuento)) + Decimal(str(iva))
 
-        factura = FacturaVenta(
-            empresa_id=self.empresa_id,
-            numero=numero,
-            cliente_id=cliente_id,
-            fecha=fecha,
-            fecha_vencimiento=fecha_vencimiento,
-            tipo=tipo,
-            subtotal=subtotal,
-            descuento=Decimal(str(descuento)),
-            iva=Decimal(str(iva)),
-            total=total,
-            moneda_id=moneda_id,
-            estado="EMITIDA",
-        )
-        self.db.add(factura)
-        await self.db.flush()
-
-        for l in lineas:
-            linea = FacturaVentaLinea(
-                factura_id=factura.id,
-                producto_id=l["producto_id"],
-                cantidad=Decimal(str(l["cantidad"])),
-                precio_unitario=Decimal(str(l["precio_unitario"])),
-                descuento=Decimal(str(l.get("descuento", 0))),
-                subtotal=Decimal(str(l["cantidad"])) * Decimal(str(l["precio_unitario"])),
-            )
-            self.db.add(linea)
-
-            producto = await self.db.get(Producto, l["producto_id"])
-            if producto:
-                producto.stock_actual -= Decimal(str(l["cantidad"]))
-
-        asiento_result = await self._generar_asiento_venta(
-            factura, fecha, cliente_id
-        )
-        if asiento_result:
-            factura.asiento_id = asiento_result.get('asiento_id')
-
-        if tipo == "CONTADO":
-            await self._registrar_cobro(factura, fecha, total, moneda_id, factura.asiento_id)
-
-        await self.db.commit()
-        await self.db.refresh(factura)
-        return factura
-
-    async def _generar_asiento_venta(
-        self, factura: FacturaVenta, fecha: date, cliente_id: uuid.UUID
-    ) -> Optional[dict]:
-        """Genera asiento usando AccountingEngine (template-based, zero IFs)."""
-        cliente = await self.db.get(Cliente, cliente_id)
-        engine = AccountingEngine(self.db)
         data = {
-            'fecha': fecha.isoformat(),
-            'numero': factura.numero,
-            'concepto': f"Factura {factura.numero}",
-            'subtotal': float(factura.subtotal),
-            'iva': float(factura.iva),
-            'descuento': float(factura.descuento),
-            'total': float(factura.total),
-            'tipo_pago': factura.tipo,
+            'numero': numero,
             'cliente_id': str(cliente_id),
-            'cliente_nombre': cliente.nombre if cliente else '',
-            'moneda_id': str(factura.moneda_id),
+            'fecha': fecha.isoformat(),
+            'fecha_vencimiento': fecha_vencimiento.isoformat() if fecha_vencimiento else None,
+            'tipo_pago': tipo,
+            'subtotal': float(subtotal),
+            'descuento': descuento,
+            'iva': iva,
+            'total': float(total),
+            'moneda_id': str(moneda_id),
+            'lineas': [
+                {
+                    'producto_id': str(l['producto_id']),
+                    'cantidad': float(l['cantidad']),
+                    'precio_unitario': float(l['precio_unitario']),
+                    'descuento': float(l.get('descuento', 0)),
+                }
+                for l in lineas
+            ],
+            'afecta_inventario': True,
+            'afecta_cxc': True,
+            'genera_asiento': True,
         }
-        return await engine.generate_from_event(
-            event_type='FAC',
-            module='facturacion',
+
+        engine = DocumentEngine(self.db)
+        result = await engine.process(
+            document_type='FAC',
+            subtype_code='FAC_' + tipo if tipo else 'FAC_CREDITO',
+            action='CREATE',
             data=data,
+            user_id=self.usuario_id,
             company_id=self.empresa_id,
-            document_id=factura.id,
         )
 
-    async def _registrar_cobro(
-        self,
-        factura: FacturaVenta,
-        fecha: date,
-        monto: Decimal,
-        moneda_id: uuid.UUID,
-        asiento_id: uuid.UUID | None,
-    ):
-        caja = await self.db.execute(
-            text("""
-            SELECT id FROM caja
-            WHERE empresa_id = :empresa_id AND activa = TRUE
-            LIMIT 1
-            """),
-            {"empresa_id": self.empresa_id},
+        if not result.success:
+            raise ValueError('; '.join(result.errors))
+
+        factura = await self.db.execute(
+            select(FacturaVenta).where(FacturaVenta.id == result.document_id)
         )
-        caja_id = caja.scalar_one_or_none()
-
-        if caja_id:
-            mov = MovimientoCaja(
-                empresa_id=self.empresa_id,
-                caja_id=caja_id,
-                fecha=fecha,
-                tipo="FACTURA",
-                concepto=f"Cobro factura {factura.numero}",
-                entrada=monto,
-                salida=0,
-                saldo=monto,
-                referencia_id=factura.id,
-                asiento_id=asiento_id,
-            )
-            self.db.add(mov)
-
-        factura.estado = "COBRADA"
+        return factura.scalar_one()
 
     async def estado_cuenta_cliente(
         self, cliente_id: uuid.UUID, fecha_corte: Optional[date] = None
