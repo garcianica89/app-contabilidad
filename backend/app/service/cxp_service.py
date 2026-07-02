@@ -3,15 +3,14 @@ from decimal import Decimal
 from typing import Optional
 import uuid
 
-from sqlalchemy import select, and_, func, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models.proveedor import Proveedor
 from app.domain.models.factura_compra import FacturaCompra, FacturaCompraLinea
 from app.domain.models.orden_compra import OrdenCompra
 from app.domain.models.producto import Producto
-from app.domain.constants import CTA_INVENTARIO_MERCANCIAS, CTA_CXP
-from app.service.asiento_service import AsientoService
+from app.service.accounting.accounting_engine import AccountingEngine
 
 
 class CxpService:
@@ -20,7 +19,6 @@ class CxpService:
         self.db = db
         self.usuario_id = usuario_id
         self.empresa_id = empresa_id
-        self.asiento_svc = AsientoService(db, usuario_id, empresa_id)
 
     async def crear_orden_compra(
         self,
@@ -115,49 +113,41 @@ class CxpService:
                     ) / cantidad_total
                 producto.stock_actual += Decimal(str(l["cantidad"]))
 
-        asiento = await self._generar_asiento_compra(
-            factura, periodo_id, fecha, proveedor_id
+        asiento_result = await self._generar_asiento_compra(
+            factura, fecha, proveedor_id
         )
-        factura.asiento_id = asiento.id
+        if asiento_result:
+            factura.asiento_id = asiento_result.get('asiento_id')
 
         await self.db.commit()
         await self.db.refresh(factura)
         return factura
 
     async def _generar_asiento_compra(
-        self, factura: FacturaCompra, periodo_id: uuid.UUID, fecha: date, proveedor_id: uuid.UUID
-    ):
+        self, factura: FacturaCompra, fecha: date, proveedor_id: uuid.UUID
+    ) -> Optional[dict]:
+        """Genera asiento usando AccountingEngine (template-based, zero IFs)."""
         proveedor = await self.db.get(Proveedor, proveedor_id)
-
-        cuentas = await self.db.execute(
-            text("""
-            SELECT id, codigo FROM cuenta_contable
-            WHERE empresa_id = :empresa_id AND acepta_datos = TRUE
-            """),
-            {"empresa_id": self.empresa_id},
-        )
-        ctas = {r.codigo: r.id for r in cuentas.fetchall()}
-
-        lineas = [{
-            "cuenta_id": ctas.get(CTA_INVENTARIO_MERCANCIAS),
-            "descripcion": f"Compra segun factura {factura.numero}",
-            "debe_local": float(factura.total),
-            "haber_local": 0,
-        }, {
-            "cuenta_id": ctas.get(CTA_CXP),
-            "descripcion": f"Proveedor: {proveedor.nombre if proveedor else ''}",
-            "debe_local": 0,
-            "haber_local": float(factura.total),
-        }]
-
-        return await self.asiento_svc.crear_asiento(
-            fecha=fecha,
-            periodo_id=periodo_id,
-            tipo="COMPRA",
-            concepto=f"Factura compra {factura.numero}",
-            lineas_data=lineas,
-            origen_modulo="COMPRAS",
-            origen_documento_id=factura.id,
+        engine = AccountingEngine(self.db)
+        data = {
+            'fecha': fecha.isoformat(),
+            'numero': factura.numero,
+            'concepto': f"Compra segun factura {factura.numero}",
+            'subtotal': float(factura.subtotal),
+            'iva': float(factura.iva),
+            'descuento': float(factura.descuento),
+            'retencion_ir': float(factura.retencion_ir),
+            'total': float(factura.total),
+            'proveedor_id': str(proveedor_id),
+            'proveedor_nombre': proveedor.nombre if proveedor else '',
+            'moneda_id': str(factura.moneda_id),
+        }
+        return await engine.generate_from_event(
+            event_type='COMPRA',
+            module='compras',
+            data=data,
+            company_id=self.empresa_id,
+            document_id=factura.id,
         )
 
     async def estado_cuenta_proveedor(
