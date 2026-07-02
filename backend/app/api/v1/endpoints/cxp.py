@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.domain.models.usuario import Usuario
 from app.service.cxp_service import CxpService
+from app.service.document_engine import DocumentEngine
 
 router = APIRouter()
 
@@ -110,3 +111,46 @@ async def antiguedad_saldos(
 ):
     svc = CxpService(db, current_user.id, current_user.empresa_id)
     return await svc.antiguedad_saldos()
+
+
+# ─── Pagos ───
+
+class PagoCreate(BaseModel):
+    factura_compra_id: uuid.UUID
+    monto: float
+    fecha: date
+    metodo_pago: str = 'EFECTIVO'
+    cuenta_banco_id: uuid.UUID | None = None
+    concepto: str | None = None
+
+@router.post("/pagos")
+async def registrar_pago(
+    data: PagoCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    engine = DocumentEngine(db)
+    result = await engine.process(
+        document_type='PAGO',
+        subtype_code='PAGO',
+        action='CREATE',
+        data={
+            'factura_compra_id': str(data.factura_compra_id),
+            'monto': data.monto,
+            'fecha': data.fecha.isoformat(),
+            'metodo_pago': data.metodo_pago,
+            'cuenta_banco_id': str(data.cuenta_banco_id) if data.cuenta_banco_id else None,
+            'concepto': data.concepto or 'Pago',
+            'afecta_banking': True,
+            'genera_asiento': True,
+        },
+        user_id=current_user.id,
+        company_id=current_user.empresa_id,
+    )
+    if not result.success:
+        raise HTTPException(status_code=400, detail='; '.join(result.errors))
+    return {
+        "document_id": str(result.document_id),
+        "asiento_id": str(result.asiento_id) if result.asiento_id else None,
+        "estado": "PAGADA",
+    }

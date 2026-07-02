@@ -110,8 +110,8 @@ class DocumentEngine:
             # 3. Numeracion
             if action in ('CREATE',):
                 numero = await self._assign_number(ctx, company_id)
-                ctx.data['numero'] = numero
-                ctx.numero = numero
+                ctx.data['numero'] = numero or f"SYS-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                ctx.numero = ctx.data['numero']
 
             # 4. Workflow transition
             estado = await self._execute_workflow(ctx)
@@ -137,7 +137,11 @@ class DocumentEngine:
             if self._affects_cxp(ctx):
                 await self._update_cxp(ctx)
 
-            # 9. Post-process: audit trail
+            # 9. Banking (cobros/pagos)
+            if self._affects_banking(ctx):
+                await self._update_banking(ctx)
+
+            # 10. Post-process: audit trail
             await self._audit_log(ctx)
 
             return DocumentResult(
@@ -361,6 +365,94 @@ class DocumentEngine:
             self.db.add(linea)
 
         ctx.data['factura_cxp_id'] = str(factura.id)
+
+    def _affects_banking(self, ctx: 'DocumentContext') -> bool:
+        return ctx.data.get('afecta_banking', False)
+
+    async def _update_banking(self, ctx: 'DocumentContext'):
+        """Procesa cobros y pagos (movimientos de caja/banco)."""
+        from app.domain.models.caja import MovimientoCaja
+        from app.domain.models.factura_venta import FacturaVenta
+        from app.domain.models.factura_compra import FacturaCompra
+
+        doc_type = ctx.document_type
+        monto = Decimal(str(ctx.data.get('monto', 0)))
+        if monto == 0:
+            return
+
+        # Cobro
+        if doc_type == 'COBRO':
+            factura_id = ctx.data.get('factura_venta_id')
+            if factura_id:
+                factura = await self.db.get(FacturaVenta, factura_id)
+                if factura:
+                    factura.estado = 'COBRADA'
+                    factura.asiento_id = ctx.asiento_id
+
+            concepto = ctx.data.get('concepto', f'Cobro FACT #{ctx.data.get("numero", "")}')
+            ingreso = monto
+            egreso = 0
+
+        # Pago
+        elif doc_type == 'PAGO':
+            factura_id = ctx.data.get('factura_compra_id')
+            if factura_id:
+                factura = await self.db.get(FacturaCompra, factura_id)
+                if factura:
+                    factura.estado = 'PAGADA'
+                    factura.asiento_id = ctx.asiento_id
+
+            concepto = ctx.data.get('concepto', f'Pago FACT #{ctx.data.get("numero", "")}')
+            ingreso = 0
+            egreso = monto
+
+        else:
+            return
+
+        # Registrar en caja
+        metodo = ctx.data.get('metodo_pago', 'EFECTIVO')
+        if metodo == 'EFECTIVO':
+            from sqlalchemy import text as sa_text
+            r = await self.db.execute(
+                sa_text("""
+                SELECT id FROM caja
+                WHERE empresa_id = :eid AND activa = TRUE
+                LIMIT 1
+                """),
+                {'eid': ctx.company_id},
+            )
+            caja_id = r.scalar_one_or_none()
+            if caja_id:
+                mov = MovimientoCaja(
+                    empresa_id=ctx.company_id,
+                    caja_id=caja_id,
+                    fecha=datetime.strptime(ctx.data.get('fecha', ''), '%Y-%m-%d').date() if ctx.data.get('fecha') else datetime.now().date(),
+                    tipo='COBRO' if doc_type == 'COBRO' else 'PAGO',
+                    concepto=concepto,
+                    entrada=ingreso,
+                    salida=egreso,
+                    saldo=monto,
+                    referencia_id=factura_id,
+                    asiento_id=ctx.asiento_id,
+                )
+                self.db.add(mov)
+
+        # Registrar en banco
+        elif metodo == 'TRANSFERENCIA' or metodo == 'CHEQUE':
+            cuenta_banco_id = ctx.data.get('cuenta_banco_id')
+            if cuenta_banco_id:
+                from app.domain.models.banco import MovimientoBanco
+                mov = MovimientoBanco(
+                    empresa_id=ctx.company_id,
+                    cuenta_banco_id=cuenta_banco_id,
+                    fecha=datetime.strptime(ctx.data.get('fecha', ''), '%Y-%m-%d').date() if ctx.data.get('fecha') else datetime.now().date(),
+                    tipo='DEPOSITO' if doc_type == 'COBRO' else 'EGRESO',
+                    concepto=concepto,
+                    monto=monto,
+                    referencia_id=factura_id,
+                    asiento_id=ctx.asiento_id,
+                )
+                self.db.add(mov)
 
     async def _audit_log(self, ctx: 'DocumentContext'):
         """Registra auditoria."""
