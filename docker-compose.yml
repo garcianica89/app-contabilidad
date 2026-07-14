@@ -1,25 +1,6 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: contabilidad
-      POSTGRES_USER: contabilidad
-      POSTGRES_PASSWORD: contabilidad_secret
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./database/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U contabilidad"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    profiles:
-      - local
-
   backend:
     build:
       context: ./backend
@@ -27,11 +8,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: "postgresql+asyncpg://neondb_owner:npg_3cY0yoMxnfah@ep-red-lab-atfxoamb-pooler.c-9.us-east-1.aws.neon.tech/neondb"
-      DATABASE_SYNC_URL: "postgresql://neondb_owner:npg_3cY0yoMxnfah@ep-red-lab-atfxoamb-pooler.c-9.us-east-1.aws.neon.tech/neondb"
-      SECRET_KEY: "app-contabilidad-super-secret-key-2026"
-      CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000","http://localhost:8000"]'
-    restart: unless-stopped
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/softland_erp
+      - SECRET_KEY=softland-erp-secret-key-change-in-production
+      - ENVIRONMENT=production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build:
@@ -41,9 +26,27 @@ services:
       - "5173:5173"
     depends_on:
       - backend
-    restart: unless-stopped
-    profiles:
-      - local
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=softland_erp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/alembic/versions:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

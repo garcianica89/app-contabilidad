@@ -11,6 +11,7 @@ from app.api.deps import get_current_user
 from app.domain.models.usuario import Usuario
 from app.domain.models.caja import Caja, MovimientoCaja, ArqueoCaja
 from app.domain.schemas import MovimientoCajaCreate
+from app.service.accounting.accounting_engine import AccountingEngine
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -90,6 +91,30 @@ async def registrar_movimiento(
     )
     db.add(mov)
     caja.saldo_actual = saldo_nuevo
+
+    await db.flush()
+
+    if data.entrada > 0 or data.salida > 0:
+        engine = AccountingEngine(db)
+        asiento_result = await engine.generate_from_event(
+            event_type='CAJA',
+            module='bancos',
+            data={
+                'caja_id': str(data.caja_id),
+                'caja_nombre': caja.nombre,
+                'fecha': data.fecha.isoformat(),
+                'concepto': data.concepto,
+                'entrada': data.entrada,
+                'salida': data.salida,
+                'movimiento_id': str(mov.id),
+                'tipo': data.tipo,
+            },
+            company_id=current_user.empresa_id,
+            document_id=mov.id,
+            user_id=current_user.id,
+        )
+        if asiento_result:
+            mov.asiento_id = asiento_result.get('asiento_id')
 
     await db.commit()
     await db.refresh(mov)

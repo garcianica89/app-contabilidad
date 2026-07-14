@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Search, FileText, Plus, X, Check, AlertCircle } from 'lucide-react'
 import { api } from '../services/api'
+import Skeleton from '../components/ui/Skeleton'
+import EmptyState from '../components/ui/EmptyState'
+import { useNotification } from '../contexts/NotificationContext'
 
 interface Factura {
   id: string
@@ -23,6 +26,7 @@ interface Producto {
   id: string
   nombre: string
   precio_venta: number
+  aplica_iva?: boolean
 }
 
 const estados: Record<string, string> = {
@@ -46,7 +50,8 @@ export default function FacturacionPage() {
     tipo: 'CONTADO', moneda_id: '', periodo_id: '',
     descuento: 0, iva: 0, fecha_vencimiento: '',
   })
-  const [lineas, setLineas] = useState<{ producto_id: string; nombre: string; cantidad: number; precio: number }[]>([])
+  const [lineas, setLineas] = useState<{ producto_id: string; nombre: string; cantidad: number; precio: number; descuento: number; aplica_iva: boolean; tasa_iva: number }[]>([])
+  const { notify } = useNotification()
 
   useEffect(() => {
     Promise.all([
@@ -72,12 +77,12 @@ export default function FacturacionPage() {
       tipo: 'CONTADO', moneda_id: '', periodo_id: '',
       descuento: 0, iva: 0, fecha_vencimiento: '',
     })
-    setLineas([{ producto_id: '', nombre: '', cantidad: 1, precio: 0 }])
+    setLineas([{ producto_id: '', nombre: '', cantidad: 1, precio: 0, descuento: 0, aplica_iva: true, tasa_iva: 15 }])
     setShowForm(true)
   }
 
   function addLinea() {
-    setLineas([...lineas, { producto_id: '', nombre: '', cantidad: 1, precio: 0 }])
+    setLineas([...lineas, { producto_id: '', nombre: '', cantidad: 1, precio: 0, descuento: 0, aplica_iva: true, tasa_iva: 15 }])
   }
 
   function removeLinea(i: number) {
@@ -88,7 +93,14 @@ export default function FacturacionPage() {
     const newLineas = [...lineas]
     if (field === 'producto_id') {
       const prod = productos.find((p) => p.id === value)
-      newLineas[i] = { ...newLineas[i], producto_id: value, nombre: prod?.nombre || '', precio: prod?.precio_venta || 0 }
+      newLineas[i] = {
+        ...newLineas[i],
+        producto_id: value,
+        nombre: prod?.nombre || '',
+        precio: prod?.precio_venta || 0,
+        aplica_iva: prod?.aplica_iva ?? true,
+        tasa_iva: 15,
+      }
     } else {
       newLineas[i] = { ...newLineas[i], [field]: value }
     }
@@ -96,7 +108,14 @@ export default function FacturacionPage() {
   }
 
   const subtotal = lineas.reduce((sum, l) => sum + (l.cantidad || 0) * (l.precio || 0), 0)
-  const total = subtotal - form.descuento + form.iva
+  const descuentoLineas = lineas.reduce((sum, l) => sum + ((l.cantidad || 0) * (l.precio || 0) * (l.descuento || 0) / 100), 0)
+  const ivaPorLinea = lineas.reduce((sum, l) => {
+    if (!l.aplica_iva) return sum
+    const tasa = l.tasa_iva || 15
+    const base = (l.cantidad || 0) * (l.precio || 0) * (1 - (l.descuento || 0) / 100)
+    return sum + base * tasa / 100
+  }, 0)
+  const total = subtotal - descuentoLineas - form.descuento + ivaPorLinea
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -108,18 +127,23 @@ export default function FacturacionPage() {
         fecha: form.fecha,
         tipo: form.tipo,
         lineas: lineas.map((l) => ({
-          producto_id: l.producto_id, cantidad: l.cantidad, precio: l.precio,
+          producto_id: l.producto_id,
+          cantidad: l.cantidad,
+          precio_unitario: l.precio,
+          descuento: l.descuento,
+          aplica_iva: l.aplica_iva,
+          tasa_iva: l.aplica_iva ? l.tasa_iva : undefined,
         })),
         moneda_id: '00000000-0000-0000-0000-000000000001',
         periodo_id: '00000000-0000-0000-0000-000000000001',
         fecha_vencimiento: form.fecha_vencimiento || null,
         descuento: form.descuento,
-        iva: form.iva,
+        iva: Math.round(ivaPorLinea * 100) / 100,
       })
       setFacturas((prev) => [factura, ...prev])
       setShowForm(false)
     } catch (err: any) {
-      alert(err.message || 'Error al crear factura')
+      notify(err.message || 'Error al crear factura')
     }
     setSaving(false)
   }
@@ -182,13 +206,18 @@ export default function FacturacionPage() {
               </button>
             </div>
             <div className="space-y-2">
-              {lineas.map((l, i) => (
+              {lineas.map((l, i) => {
+                const lineTotal = (l.cantidad || 0) * (l.precio || 0)
+                const lineDesc = lineTotal * (l.descuento || 0) / 100
+                const lineNeto = lineTotal - lineDesc
+                const lineIva = l.aplica_iva ? lineNeto * (l.tasa_iva || 15) / 100 : 0
+                return (
                 <div key={i} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-6">
+                  <div className="col-span-3">
                     <select value={l.producto_id} onChange={(e) => updateLinea(i, 'producto_id', e.target.value)}
                       className="input-filter w-full text-xs">
                       <option value="">Seleccionar producto</option>
-                      {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} {!p.aplica_iva ? '(sin IVA)' : ''}</option>)}
                     </select>
                   </div>
                   <div className="col-span-2">
@@ -199,8 +228,24 @@ export default function FacturacionPage() {
                     <input type="number" step="0.01" value={l.precio} onChange={(e) => updateLinea(i, 'precio', Number(e.target.value))}
                       className="input-filter w-full text-xs" placeholder="Precio" />
                   </div>
-                  <div className="col-span-1 text-right text-xs text-slate-400 py-2">
-                    C$ {(l.cantidad * l.precio).toLocaleString('es-NI', { minimumFractionDigits: 2 })}
+                  <div className="col-span-1">
+                    <input type="number" step="0.01" min="0" max="100" value={l.descuento} onChange={(e) => updateLinea(i, 'descuento', Number(e.target.value))}
+                      className="input-filter w-full text-xs" placeholder="Dto%" />
+                  </div>
+                  <div className="col-span-1 flex items-center gap-1">
+                    <input type="checkbox" checked={l.aplica_iva}
+                      onChange={(e) => updateLinea(i, 'aplica_iva', e.target.checked)}
+                      className="w-3 h-3" title="Aplica IVA" />
+                    {l.aplica_iva && (
+                      <input type="number" step="0.01" value={l.tasa_iva}
+                        onChange={(e) => updateLinea(i, 'tasa_iva', Number(e.target.value))}
+                        className="input-filter w-12 text-right text-xs" placeholder="%" />
+                    )}
+                  </div>
+                  <div className="col-span-2 text-right text-xs text-slate-400 py-2">
+                    <div>C$ {lineTotal.toLocaleString('es-NI', { minimumFractionDigits: 2 })}</div>
+                    {l.descuento > 0 && <div className="text-green-400">-{l.descuento}% = C$ {lineNeto.toLocaleString('es-NI', { minimumFractionDigits: 2 })}</div>}
+                    {lineIva > 0 && <div className="text-amber-400">IVA C$ {lineIva.toLocaleString('es-NI', { minimumFractionDigits: 2 })}</div>}
                   </div>
                   <div className="col-span-1 text-center">
                     {lineas.length > 1 && (
@@ -210,7 +255,8 @@ export default function FacturacionPage() {
                     )}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
@@ -220,16 +266,20 @@ export default function FacturacionPage() {
               <span className="text-white font-mono w-28 text-right">C$ {subtotal.toLocaleString('es-NI', { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex gap-8">
-              <span className="text-slate-400">Descuento:</span>
+              <span className="text-slate-400">Dto. Lineas:</span>
+              <span className="text-green-400 font-mono w-28 text-right">-C$ {descuentoLineas.toLocaleString('es-NI', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex gap-8">
+              <span className="text-slate-400">Dto. Adicional:</span>
               <input type="number" step="0.01" value={form.descuento}
                 onChange={(e) => setForm({ ...form, descuento: Number(e.target.value) })}
                 className="input-filter w-28 text-right text-xs" />
             </div>
             <div className="flex gap-8">
               <span className="text-slate-400">IVA:</span>
-              <input type="number" step="0.01" value={form.iva}
-                onChange={(e) => setForm({ ...form, iva: Number(e.target.value) })}
-                className="input-filter w-28 text-right text-xs" />
+              <span className="text-amber-400 font-mono w-28 text-right">
+                C$ {ivaPorLinea.toLocaleString('es-NI', { minimumFractionDigits: 2 })}
+              </span>
             </div>
             <div className="flex gap-8 text-base font-bold">
               <span className="text-white">Total:</span>
@@ -257,14 +307,9 @@ export default function FacturacionPage() {
       </div>
 
       {loading ? (
-        <div className="card animate-pulse space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-slate-700/50 rounded" />)}
-        </div>
+<Skeleton rows={5} />
       ) : filtered.length === 0 ? (
-        <div className="card text-center py-12 text-slate-500">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {search ? 'Ninguna factura coincide con la busqueda' : 'No hay facturas registradas'}
-        </div>
+        <EmptyState message={search ? 'Ninguna factura coincide con la busqueda' : 'No hay facturas registradas'} />
       ) : (
         <div className="card overflow-hidden !p-0">
           <div className="overflow-x-auto">

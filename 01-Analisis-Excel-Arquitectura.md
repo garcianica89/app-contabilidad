@@ -30,12 +30,12 @@
 
 ### Otras fuentes de datos encontradas
 
-Se identificaron archivos adicionales que reflejan el uso previo de **Softland ERP** en otro negocio (Ritter Sport Nicaragua — RSN, finca cacaotera). Esto indica que el usuario conoce el funcionamiento de un ERP profesional y busca replicar esa experiencia para Tuckler beauty.
+Se identificaron archivos adicionales que reflejan el uso previo de **ERP de referencia** en otro negocio (Ritter Sport Nicaragua — RSN, finca cacaotera). Esto indica que el usuario conoce el funcionamiento de un ERP profesional y busca replicar esa experiencia para Tuckler beauty.
 
 Archivos relacionados:
-- `Info Cacao Matagalpa 2025.xlsx` — Exportación de Mayor General desde Softland
+- `Info Cacao Matagalpa 2025.xlsx` — Exportación de Mayor General desde ERP de referencia
 - `RSN_Cargador_Movimientos_CP.xlsx` — Cargador de Cuentas por Pagar
-- `Cargador Softland.xlsx` — Asientos de diario desde Softland
+- `Cargador ERP de referencia.xlsx` — Asientos de diario desde ERP de referencia
 - Múltiples archivos en `RITTER/` — CxP, CxC, Nómina, Activos Fijos, Conciliación
 
 ## 1.2 Hojas del Archivo Principal (Tuckler beauty.xlsx)

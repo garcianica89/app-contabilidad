@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Search, UserPlus, Pencil, X, Check, AlertCircle } from 'lucide-react'
 import { api } from '../services/api'
+import Skeleton from '../components/ui/Skeleton'
+import EmptyState from '../components/ui/EmptyState'
 
 interface Cliente {
   id: string
@@ -165,14 +167,9 @@ export default function ClientesPage() {
       </div>
 
       {loading ? (
-        <div className="card animate-pulse space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-slate-700/50 rounded" />)}
-        </div>
+<Skeleton rows={5} />
       ) : filtered.length === 0 ? (
-        <div className="card text-center py-12 text-slate-500">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {search ? 'Ningun cliente coincide con la busqueda' : 'No hay clientes registrados'}
-        </div>
+        <EmptyState message={search ? 'Ningun cliente coincide con la busqueda' : 'No hay clientes registrados'} />
       ) : (
         <div className="card overflow-hidden !p-0">
           <div className="overflow-x-auto">

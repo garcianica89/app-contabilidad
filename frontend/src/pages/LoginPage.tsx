@@ -1,23 +1,20 @@
 import { useState, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { BarChart3, Lock, User } from 'lucide-react'
-import { api } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
+  const { login } = useAuth()
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
     try {
-      const res = await api.login(username, password)
-      localStorage.setItem('token', res.access_token)
-      navigate('/')
+      await login(username, password)
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesion')
     } finally {

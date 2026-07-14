@@ -75,8 +75,9 @@ class AsientoService:
         return total_debe, total_haber
 
     async def _obtener_siguiente_numero(self, periodo_id: uuid.UUID) -> int:
+        from sqlalchemy import cast, Integer
         result = await self.db.execute(
-            select(func.coalesce(func.max(Asiento.numero), 0) + 1).where(
+            select(func.coalesce(func.max(cast(Asiento.numero, Integer)), 0) + 1).where(
                 Asiento.empresa_id == self.empresa_id,
                 Asiento.periodo_id == periodo_id,
             )

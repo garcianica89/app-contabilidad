@@ -330,11 +330,22 @@ class ReporteService:
     async def flujo_efectivo(
         self, fecha_inicio: date, fecha_fin: date
     ):
+        from app.domain.models.parametro import Parametro
+        prefix_result = await self.db.execute(
+            select(Parametro.valor).where(
+                Parametro.empresa_id == self.empresa_id,
+                Parametro.grupo == 'CONTABILIDAD',
+                Parametro.clave == 'CUENTAS_EFECTIVO_PREFIX',
+            )
+        )
+        prefix_row = prefix_result.scalar_one_or_none()
+        prefix = prefix_row or '1-1-1'
+
         cuentas_efectivo = await self.db.execute(
             select(CuentaContable).where(
                 CuentaContable.empresa_id == self.empresa_id,
                 CuentaContable.tipo == "ACTIVO",
-                CuentaContable.codigo.like("1-1-1%"),
+                CuentaContable.codigo.like(f"{prefix}%"),
                 CuentaContable.acepta_datos == True,
             )
         )

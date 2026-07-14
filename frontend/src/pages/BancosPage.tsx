@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Search, PiggyBank, Pencil, X, Check, AlertCircle, Plus, ArrowRight, ArrowLeft } from 'lucide-react'
+import { Search, PiggyBank, Pencil, X, Check, AlertCircle, Plus, ArrowRight, ArrowLeft, Settings } from 'lucide-react'
 import { api } from '../services/api'
+import Skeleton from '../components/ui/Skeleton'
+import EmptyState from '../components/ui/EmptyState'
+import type { TipoCuentaBanco } from '../types/api'
 
 interface CuentaBanco {
   id: string
@@ -9,6 +12,8 @@ interface CuentaBanco {
   tipo: string
   saldo: number
   activa: boolean
+  tipo_cuenta_banco_id?: string
+  cuenta_contable_id?: string
 }
 
 interface Movimiento {
@@ -20,17 +25,20 @@ interface Movimiento {
   entrada: number
   salida: number
   saldo: number
-  numero_documento: string | null
+  numero_documento?: string | null
 }
 
 export default function BancosPage() {
   const [cuentas, setCuentas] = useState<CuentaBanco[]>([])
   const [movimientos, setMovimientos] = useState<Movimiento[]>([])
+  const [tiposCuentaBanco, setTiposCuentaBanco] = useState<TipoCuentaBanco[]>([])
+  const [cuentasContables, setCuentasContables] = useState<any[]>([])
+  const [monedas, setMonedas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ banco: '', numero_cuenta: '', tipo: 'CORRIENTE', moneda_id: '' })
+  const [form, setForm] = useState({ banco: '', numero_cuenta: '', tipo: 'CORRIENTE', moneda_id: '', tipo_cuenta_banco_id: '', cuenta_contable_id: '' })
   const [saving, setSaving] = useState(false)
 
   const [showMovForm, setShowMovForm] = useState(false)
@@ -39,10 +47,51 @@ export default function BancosPage() {
     tipo: 'INGRESO', concepto: '', entrada: 0, salida: 0, numero_documento: '',
   })
   const [selectedCuenta, setSelectedCuenta] = useState<string | null>(null)
+  const [showConfigMov, setShowConfigMov] = useState(false)
+  const [subtiposMOV, setSubtiposMOV] = useState<any[]>([])
+  const [configMovForm, setConfigMovForm] = useState({
+    subtype_code: '', cuenta_id: '', fecha: new Date().toISOString().split('T')[0],
+    monto: 0, concepto: '', tipo: 'EGRESO', numero_documento: '',
+  })
 
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    loadSubtiposMOV()
+    loadTiposCuenta()
+    loadCuentasContables()
+    loadMonedas()
+  }, [])
+
+  async function loadSubtiposMOV() {
+    try {
+      const list = await api.getSubtiposPorTipo('MOV_BANCO')
+      setSubtiposMOV(list)
+    } catch {}
+  }
+
+  async function loadTiposCuenta() {
+    try {
+      const list = await api.getTiposCuentaBanco(true)
+      setTiposCuentaBanco(list)
+    } catch {}
+  }
+
+  async function loadCuentasContables() {
+    try {
+      const list = await api.getCuentasContables()
+      setCuentasContables(list)
+    } catch {}
+  }
+
+  async function loadMonedas() {
+    try {
+      const list = await api.getMonedas()
+      setMonedas(list)
+    } catch {}
+  }
 
   async function loadData() {
     try {
@@ -60,17 +109,35 @@ export default function BancosPage() {
     ? movimientos.filter((m) => m.cuenta_id === selectedCuenta)
     : movimientos
 
-  function openCreate() { setEditId(null); setForm({ banco: '', numero_cuenta: '', tipo: 'CORRIENTE', moneda_id: '' }); setShowForm(true) }
+  function openCreate() {
+    setEditId(null)
+    setForm({ banco: '', numero_cuenta: '', tipo: 'CORRIENTE', moneda_id: '', tipo_cuenta_banco_id: '', cuenta_contable_id: '' })
+    setShowForm(true)
+  }
 
   function openEdit(c: CuentaBanco) {
-    setEditId(c.id); setForm({ banco: c.banco, numero_cuenta: c.numero_cuenta, tipo: c.tipo, moneda_id: '' }); setShowForm(true)
+    setEditId(c.id)
+    setForm({
+      banco: c.banco, numero_cuenta: c.numero_cuenta, tipo: c.tipo,
+      moneda_id: c.moneda_id, tipo_cuenta_banco_id: c.tipo_cuenta_banco_id || '',
+      cuenta_contable_id: c.cuenta_contable_id || '',
+    })
+    setShowForm(true)
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
     try {
-      const payload = { ...form, moneda_id: '00000000-0000-0000-0000-000000000001' }
+      const payload: any = {
+        banco: form.banco,
+        numero_cuenta: form.numero_cuenta,
+        tipo: form.tipo,
+      }
+      if (form.moneda_id) payload.moneda_id = form.moneda_id
+      if (form.tipo_cuenta_banco_id) payload.tipo_cuenta_banco_id = form.tipo_cuenta_banco_id
+      if (form.cuenta_contable_id) payload.cuenta_contable_id = form.cuenta_contable_id
+
       const updated = editId
         ? await api.actualizarCuentaBanco(editId, payload)
         : await api.crearCuentaBanco(payload)
@@ -96,6 +163,20 @@ export default function BancosPage() {
     setSaving(false)
   }
 
+  async function handleConfigMovSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const result = await api.crearMovimientoBancoConfigurable({
+        ...configMovForm,
+        numero_documento: configMovForm.numero_documento || undefined,
+      })
+      loadData()
+      setShowConfigMov(false)
+    } catch {}
+    setSaving(false)
+  }
+
   const cuentaActual = cuentas.find((c) => c.id === selectedCuenta)
 
   return (
@@ -110,6 +191,10 @@ export default function BancosPage() {
             className="btn-secondary flex items-center gap-2 text-sm">
             <Plus className="w-4 h-4" /> Movimiento
           </button>
+          <button onClick={() => { setShowConfigMov(true); setConfigMovForm({ ...configMovForm, cuenta_id: selectedCuenta || '' }) }}
+            className="btn-secondary flex items-center gap-2 text-sm">
+            <Settings className="w-4 h-4" /> Mov. Configurable
+          </button>
           <button onClick={openCreate} className="btn-primary flex items-center gap-2">
             <PiggyBank className="w-4 h-4" /> Nueva Cuenta
           </button>
@@ -122,7 +207,7 @@ export default function BancosPage() {
             <h3 className="text-sm font-semibold text-white">{editId ? 'Editar Cuenta' : 'Nueva Cuenta Bancaria'}</h3>
             <button type="button" onClick={() => setShowForm(false)} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Banco *</label>
               <input value={form.banco} onChange={(e) => setForm({ ...form, banco: e.target.value })} className="input-filter w-full" required placeholder="BAC Credomatic" />
@@ -137,6 +222,27 @@ export default function BancosPage() {
                 <option value="CORRIENTE">Corriente</option>
                 <option value="AHORRO">Ahorro</option>
                 <option value="CREDITO">Credito</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Moneda *</label>
+              <select value={form.moneda_id} onChange={(e) => setForm({ ...form, moneda_id: e.target.value })} className="input-filter w-full" required>
+                <option value="">Seleccionar moneda</option>
+                {monedas.map((m: any) => <option key={m.id} value={m.id}>{m.codigo} - {m.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Tipo de Cuenta (configurable)</label>
+              <select value={form.tipo_cuenta_banco_id} onChange={(e) => setForm({ ...form, tipo_cuenta_banco_id: e.target.value })} className="input-filter w-full">
+                <option value="">-- Seleccionar --</option>
+                {tiposCuentaBanco.map((t) => <option key={t.id} value={t.id}>{t.codigo} - {t.nombre}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Cuenta Contable</label>
+              <select value={form.cuenta_contable_id} onChange={(e) => setForm({ ...form, cuenta_contable_id: e.target.value })} className="input-filter w-full">
+                <option value="">-- Seleccionar --</option>
+                {cuentasContables.map((cc: any) => <option key={cc.id} value={cc.id}>{cc.codigo} - {cc.nombre}</option>)}
               </select>
             </div>
           </div>
@@ -201,6 +307,64 @@ export default function BancosPage() {
         </form>
       )}
 
+      {showConfigMov && (
+        <form onSubmit={handleConfigMovSubmit} className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Movimiento Bancario Configurable (MOV_BANCO)</h3>
+            <button type="button" onClick={() => setShowConfigMov(false)} className="text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Subtipo</label>
+              <select value={configMovForm.subtype_code} onChange={(e) => setConfigMovForm({ ...configMovForm, subtype_code: e.target.value })} className="input-filter w-full" required>
+                <option value="">Seleccionar subtipo...</option>
+                {subtiposMOV.map((s: any) => <option key={s.codigo} value={s.codigo}>{s.nombre}</option>)}
+              </select>
+              {subtiposMOV.length === 0 && (
+                <p className="text-xs text-yellow-400 mt-1">No hay subtipos. Cree uno en Configuracion Documentos.</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Cuenta</label>
+              <select value={configMovForm.cuenta_id} onChange={(e) => setConfigMovForm({ ...configMovForm, cuenta_id: e.target.value })} className="input-filter w-full" required>
+                <option value="">Seleccionar cuenta...</option>
+                {cuentas.map((c) => <option key={c.id} value={c.id}>{c.banco} - {c.numero_cuenta}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Fecha</label>
+              <input type="date" value={configMovForm.fecha} onChange={(e) => setConfigMovForm({ ...configMovForm, fecha: e.target.value })} className="input-filter w-full" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Tipo</label>
+              <select value={configMovForm.tipo} onChange={(e) => setConfigMovForm({ ...configMovForm, tipo: e.target.value })} className="input-filter w-full">
+                <option value="INGRESO">Ingreso</option>
+                <option value="EGRESO">Egreso</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Monto</label>
+              <input type="number" step="0.01" value={configMovForm.monto}
+                onChange={(e) => setConfigMovForm({ ...configMovForm, monto: Number(e.target.value) })} className="input-filter w-full" required />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-slate-400 mb-1">Concepto *</label>
+              <input value={configMovForm.concepto} onChange={(e) => setConfigMovForm({ ...configMovForm, concepto: e.target.value })} className="input-filter w-full" required placeholder="Descripcion del movimiento" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">No. Documento</label>
+              <input value={configMovForm.numero_documento} onChange={(e) => setConfigMovForm({ ...configMovForm, numero_documento: e.target.value })} className="input-filter w-full" placeholder="Cheque / Ref." />
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button type="submit" disabled={saving} className="btn-primary flex items-center gap-2">
+              {saving ? 'Guardando...' : <><Check className="w-4 h-4" /> Registrar</>}
+            </button>
+            <button type="button" onClick={() => setShowConfigMov(false)} className="btn-secondary">Cancelar</button>
+          </div>
+        </form>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {cuentas.map((c) => (
           <div key={c.id}
@@ -231,14 +395,9 @@ export default function BancosPage() {
       </div>
 
       {loading ? (
-        <div className="card animate-pulse space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-slate-700/50 rounded" />)}
-        </div>
+<Skeleton rows={5} />
       ) : movFiltrados.length === 0 ? (
-        <div className="card text-center py-12 text-slate-500">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          No hay movimientos registrados
-        </div>
+        <EmptyState message="No hay movimientos registrados" />
       ) : (
         <div className="card overflow-hidden !p-0">
           <div className="overflow-x-auto">

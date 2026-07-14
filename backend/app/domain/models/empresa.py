@@ -10,6 +10,7 @@ class Empresa(Base):
     __tablename__ = "empresa"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    codigo: Mapped[str | None] = mapped_column(String(20))
     nombre: Mapped[str] = mapped_column(String(200), nullable=False)
     nombre_legal: Mapped[str | None] = mapped_column(String(200))
     ruc: Mapped[str | None] = mapped_column(String(20), unique=True)

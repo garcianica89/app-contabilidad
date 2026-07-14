@@ -16,3 +16,10 @@ rol_permiso = Table(
     Column("rol_id", Uuid(), ForeignKey("rol.id", ondelete="CASCADE"), primary_key=True),
     Column("permiso_id", Uuid(), ForeignKey("permiso.id", ondelete="CASCADE"), primary_key=True),
 )
+
+proveedor_retencion = Table(
+    "proveedor_retencion",
+    Base.metadata,
+    Column("proveedor_id", Uuid(), ForeignKey("proveedor.id", ondelete="CASCADE"), primary_key=True),
+    Column("retencion_id", Uuid(), ForeignKey("retencion.id", ondelete="CASCADE"), primary_key=True),
+)

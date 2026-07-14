@@ -1,26 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Search, Building2, Pencil, X, Check, AlertCircle } from 'lucide-react'
 import { api } from '../services/api'
-
-interface Proveedor {
-  id: string
-  codigo: string | null
-  nombre: string
-  ruc: string | null
-  direccion: string | null
-  telefono: string | null
-  email: string | null
-  saldo: number
-  activo: boolean
-}
+import Skeleton from '../components/ui/Skeleton'
+import EmptyState from '../components/ui/EmptyState'
+import type { Proveedor, Retencion } from '../types/api'
 
 const emptyForm = {
   codigo: '', nombre: '', ruc: '', direccion: '', telefono: '', email: '',
-  plazo_credito: 30,
+  plazo_credito: 30, aplica_iva: true, tasa_iva: 15, retenciones: [] as string[],
 }
 
 export default function ProveedoresPage() {
   const [items, setItems] = useState<Proveedor[]>([])
+  const [retenciones, setRetenciones] = useState<Retencion[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -29,7 +21,13 @@ export default function ProveedoresPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    api.getProveedores().then(setItems).catch(() => {}).finally(() => setLoading(false))
+    Promise.all([
+      api.getProveedores(),
+      api.getRetenciones(true),
+    ]).then(([p, r]) => {
+      setItems(p)
+      setRetenciones(r)
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   const filtered = items.filter((c) =>
@@ -45,17 +43,27 @@ export default function ProveedoresPage() {
     setForm({
       codigo: c.codigo || '', nombre: c.nombre, ruc: c.ruc || '',
       direccion: c.direccion || '', telefono: c.telefono || '', email: c.email || '',
-      plazo_credito: 30,
+      plazo_credito: 30, aplica_iva: c.aplica_iva, tasa_iva: c.tasa_iva,
+      retenciones: (c.retenciones || []).map((r) => r.id),
     })
     setShowForm(true)
+  }
+
+  function toggleRetencion(id: string) {
+    setForm({
+      ...form,
+      retenciones: form.retenciones.includes(id)
+        ? form.retenciones.filter((rid) => rid !== id)
+        : [...form.retenciones, id],
+    })
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
     try {
-      const payload = { ...form }
-      if (!payload.codigo) delete (payload as any).codigo
+      const payload: any = { ...form, retenciones: form.retenciones }
+      if (!payload.codigo) delete payload.codigo
       const updated = editId
         ? await api.actualizarProveedor(editId, payload)
         : await api.crearProveedor(payload)
@@ -108,6 +116,39 @@ export default function ProveedoresPage() {
               <label className="block text-xs text-slate-400 mb-1">Plazo Credito (dias)</label>
               <input type="number" value={form.plazo_credito} onChange={(e) => setForm({ ...form, plazo_credito: Number(e.target.value) })} className="input-filter w-full" />
             </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">IVA</label>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <input type="checkbox" checked={form.aplica_iva} onChange={(e) => setForm({ ...form, aplica_iva: e.target.checked })} className="rounded border-slate-600 bg-slate-700 text-primary-500" />
+                  Aplica IVA
+                </label>
+                {form.aplica_iva && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-slate-400">Tasa:</span>
+                    <input type="number" step="0.01" min="0" max="100" value={form.tasa_iva} onChange={(e) => setForm({ ...form, tasa_iva: Number(e.target.value) })} className="input-filter w-20 text-xs" />
+                    <span className="text-xs text-slate-400">%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Retenciones</label>
+              <div className="flex flex-wrap gap-2">
+                {retenciones.length === 0 && <span className="text-xs text-slate-500">Cree retenciones en Configuracion</span>}
+                {retenciones.filter((r) => r.is_active).map((r) => (
+                  <label key={r.id} className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer border transition-colors ${
+                    form.retenciones.includes(r.id)
+                      ? 'bg-primary-900/50 border-primary-500 text-primary-300'
+                      : 'bg-slate-800 border-slate-600 text-slate-400 hover:border-slate-500'
+                  }`}>
+                    <input type="checkbox" checked={form.retenciones.includes(r.id)}
+                      onChange={() => toggleRetencion(r.id)} className="hidden" />
+                    {r.codigo} ({r.porcentaje}%)
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-xs text-slate-400 mb-1">Direccion</label>
               <input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} className="input-filter w-full" placeholder="Direccion completa" />
@@ -131,14 +172,9 @@ export default function ProveedoresPage() {
       </div>
 
       {loading ? (
-        <div className="card animate-pulse space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-slate-700/50 rounded" />)}
-        </div>
+<Skeleton rows={5} />
       ) : filtered.length === 0 ? (
-        <div className="card text-center py-12 text-slate-500">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {search ? 'Ningun proveedor coincide con la busqueda' : 'No hay proveedores registrados'}
-        </div>
+        <EmptyState message={search ? 'Ningun proveedor coincide con la busqueda' : 'No hay proveedores registrados'} />
       ) : (
         <div className="card overflow-hidden !p-0">
           <div className="overflow-x-auto">

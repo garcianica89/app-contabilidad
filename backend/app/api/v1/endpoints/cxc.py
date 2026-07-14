@@ -2,6 +2,7 @@ from typing import Annotated
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.domain.models.usuario import Usuario
+from app.domain.models.factura_venta import FacturaVenta
 from app.service.cxc_service import CxcService
 from app.service.document_engine import DocumentEngine
 
@@ -26,6 +28,8 @@ class FacturaVentaCreate(BaseModel):
     descuento: float = 0
     iva: float = 0
     periodo_id: uuid.UUID
+    aplica_iva: bool | None = None
+    tasa_iva: float | None = None
 
 
 @router.post("/facturas")
@@ -47,6 +51,8 @@ async def crear_factura(
             descuento=data.descuento,
             iva=data.iva,
             periodo_id=data.periodo_id,
+            aplica_iva=data.aplica_iva,
+            tasa_iva=data.tasa_iva,
         )
         return {
             "id": str(factura.id),
@@ -65,9 +71,6 @@ async def listar_facturas(
     cliente_id: uuid.UUID | None = None,
     estado: str | None = None,
 ):
-    from sqlalchemy import select
-    from app.domain.models.factura_venta import FacturaVenta
-
     query = select(FacturaVenta).where(
         FacturaVenta.empresa_id == current_user.empresa_id
     )
@@ -92,6 +95,102 @@ async def listar_facturas(
     ]
 
 
+@router.get("/facturas/{factura_id}")
+async def get_factura(
+    factura_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    factura = await db.get(FacturaVenta, factura_id)
+    if not factura or factura.empresa_id != current_user.empresa_id:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    return {
+        "id": str(factura.id),
+        "numero": factura.numero,
+        "cliente_id": str(factura.cliente_id),
+        "fecha": str(factura.fecha),
+        "subtotal": float(factura.subtotal),
+        "descuento": float(factura.descuento),
+        "iva": float(factura.iva),
+        "total": float(factura.total),
+        "estado": factura.estado,
+        "tipo": factura.tipo,
+    }
+
+
+# ─── Retenciones por Factura ───
+
+class RetencionFacturaInput(BaseModel):
+    retencion_id: uuid.UUID
+    base_imponible: float = 0
+    monto_retenido: float = 0
+
+
+@router.get("/facturas/{factura_id}/retenciones")
+async def get_retenciones_factura(
+    factura_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    svc = CxcService(db, current_user.id, current_user.empresa_id)
+    try:
+        return await svc.get_retenciones_factura(factura_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/facturas/{factura_id}/retenciones")
+async def save_retenciones_factura(
+    factura_id: uuid.UUID,
+    retenciones: list[RetencionFacturaInput],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    svc = CxcService(db, current_user.id, current_user.empresa_id)
+    try:
+        await svc.save_retenciones_factura(
+            factura_id,
+            [r.model_dump() for r in retenciones],
+        )
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ─── Cobros ───
+
+class CobroCreate(BaseModel):
+    factura_venta_id: uuid.UUID
+    monto: float
+    fecha: date
+    metodo_pago: str = 'EFECTIVO'
+    cuenta_banco_id: uuid.UUID | None = None
+    concepto: str | None = None
+    retenciones: list[RetencionFacturaInput] | None = None
+
+
+@router.post("/cobros")
+async def registrar_cobro(
+    data: CobroCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    svc = CxcService(db, current_user.id, current_user.empresa_id)
+    try:
+        result = await svc.registrar_cobro(
+            factura_venta_id=data.factura_venta_id,
+            monto=data.monto,
+            fecha=data.fecha,
+            metodo_pago=data.metodo_pago,
+            cuenta_banco_id=data.cuenta_banco_id,
+            concepto=data.concepto,
+            retenciones=[r.model_dump() for r in data.retenciones] if data.retenciones else None,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/estado-cuenta/{cliente_id}")
 async def estado_cuenta(
     cliente_id: uuid.UUID,
@@ -110,46 +209,3 @@ async def antiguedad_saldos(
 ):
     svc = CxcService(db, current_user.id, current_user.empresa_id)
     return await svc.antiguedad_saldos()
-
-
-# ─── Cobros ───
-
-class CobroCreate(BaseModel):
-    factura_venta_id: uuid.UUID
-    monto: float
-    fecha: date
-    metodo_pago: str = 'EFECTIVO'
-    cuenta_banco_id: uuid.UUID | None = None
-    concepto: str | None = None
-
-@router.post("/cobros")
-async def registrar_cobro(
-    data: CobroCreate,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Usuario, Depends(get_current_user)],
-):
-    engine = DocumentEngine(db)
-    result = await engine.process(
-        document_type='COBRO',
-        subtype_code='COBRO',
-        action='CREATE',
-        data={
-            'factura_venta_id': str(data.factura_venta_id),
-            'monto': data.monto,
-            'fecha': data.fecha.isoformat(),
-            'metodo_pago': data.metodo_pago,
-            'cuenta_banco_id': str(data.cuenta_banco_id) if data.cuenta_banco_id else None,
-            'concepto': data.concepto or 'Cobro',
-            'afecta_banking': True,
-            'genera_asiento': True,
-        },
-        user_id=current_user.id,
-        company_id=current_user.empresa_id,
-    )
-    if not result.success:
-        raise HTTPException(status_code=400, detail='; '.join(result.errors))
-    return {
-        "document_id": str(result.document_id),
-        "asiento_id": str(result.asiento_id) if result.asiento_id else None,
-        "estado": "COBRADA",
-    }

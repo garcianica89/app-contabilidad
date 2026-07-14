@@ -49,6 +49,9 @@ class ActivoFijoCreate(BaseModel):
     vida_util_anos: int
     metodo_depreciacion: str
     cuenta_contable_id: uuid.UUID | None = None
+    cuenta_depreciacion_gasto_id: uuid.UUID | None = None
+    cuenta_depreciacion_acumulada_id: uuid.UUID | None = None
+    cuenta_baja_id: uuid.UUID | None = None
     ubicacion: str | None = None
 
 
@@ -58,6 +61,10 @@ class ActivoFijoUpdate(BaseModel):
     valor_residual: float | None = None
     ubicacion: str | None = None
     estado: str | None = None
+    cuenta_contable_id: uuid.UUID | None = None
+    cuenta_depreciacion_gasto_id: uuid.UUID | None = None
+    cuenta_depreciacion_acumulada_id: uuid.UUID | None = None
+    cuenta_baja_id: uuid.UUID | None = None
 
 
 class ActivoFijoResponse(BaseModel):
@@ -77,6 +84,10 @@ class ActivoFijoResponse(BaseModel):
     depreciacion_acumulada: float
     fecha_baja: date | None
     motivo_baja: str | None
+    cuenta_contable_id: str | None = None
+    cuenta_depreciacion_gasto_id: str | None = None
+    cuenta_depreciacion_acumulada_id: str | None = None
+    cuenta_baja_id: str | None = None
     ubicacion: str | None
     created_at: datetime
     updated_at: datetime | None
@@ -166,6 +177,10 @@ async def listar_activos(
             depreciacion_acumulada=float(a.depreciacion_acumulada),
             fecha_baja=a.fecha_baja,
             motivo_baja=a.motivo_baja,
+            cuenta_contable_id=str(a.cuenta_contable_id) if a.cuenta_contable_id else None,
+            cuenta_depreciacion_gasto_id=str(a.cuenta_depreciacion_gasto_id) if a.cuenta_depreciacion_gasto_id else None,
+            cuenta_depreciacion_acumulada_id=str(a.cuenta_depreciacion_acumulada_id) if a.cuenta_depreciacion_acumulada_id else None,
+            cuenta_baja_id=str(a.cuenta_baja_id) if a.cuenta_baja_id else None,
             ubicacion=a.ubicacion,
             created_at=a.created_at,
             updated_at=a.updated_at,
@@ -197,6 +212,10 @@ async def crear_activo(
         estado="ACTIVO",
         valor_libros=data.costo_adquisicion,
         depreciacion_acumulada=0,
+        cuenta_contable_id=data.cuenta_contable_id,
+        cuenta_depreciacion_gasto_id=data.cuenta_depreciacion_gasto_id,
+        cuenta_depreciacion_acumulada_id=data.cuenta_depreciacion_acumulada_id,
+        cuenta_baja_id=data.cuenta_baja_id,
         ubicacion=data.ubicacion,
     )
     db.add(activo)
@@ -384,6 +403,7 @@ async def ejecutar_depreciacion(
             data=data,
             company_id=current_user.empresa_id,
             document_id=activo_id,
+            user_id=current_user.id,
         )
         if asiento_result:
             result['asiento_id'] = str(asiento_result.get('asiento_id'))

@@ -11,15 +11,13 @@ interface DataTableProps {
   loading?: boolean
 }
 
+import Skeleton from './ui/Skeleton'
+
 export default function DataTable({ columns, data, loading }: DataTableProps) {
   if (loading) {
     return (
       <div className="card">
-        <div className="animate-pulse space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-8 bg-slate-700/50 rounded" />
-          ))}
-        </div>
+        <Skeleton rows={5} barHeight="h-8" />
       </div>
     )
   }

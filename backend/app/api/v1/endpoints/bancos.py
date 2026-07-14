@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.domain.models.usuario import Usuario
 from app.domain.models.banco import CuentaBanco, MovimientoBanco
+from app.service.accounting.accounting_engine import AccountingEngine
 
 router = APIRouter()
 
@@ -20,6 +21,8 @@ class CuentaBancoCreate(BaseModel):
     numero_cuenta: str
     tipo: str = "CORRIENTE"
     moneda_id: uuid.UUID
+    tipo_cuenta_banco_id: uuid.UUID | None = None
+    cuenta_contable_id: uuid.UUID | None = None
 
 
 class CuentaBancoResponse(BaseModel):
@@ -29,6 +32,8 @@ class CuentaBancoResponse(BaseModel):
     tipo: str
     saldo: float
     activa: bool
+    tipo_cuenta_banco_id: uuid.UUID | None = None
+    cuenta_contable_id: uuid.UUID | None = None
 
     class Config:
         from_attributes = True
@@ -169,6 +174,78 @@ async def registrar_movimiento(
     )
     db.add(mov)
     c.saldo = saldo_nuevo
+
+    await db.flush()
+
+    if data.entrada > 0 or data.salida > 0:
+        engine = AccountingEngine(db)
+        asiento_result = await engine.generate_from_event(
+            event_type='BANCO',
+            module='bancos',
+            data={
+                'cuenta_id': str(data.cuenta_id),
+                'cuenta_banco': f"{c.banco} - {c.numero_cuenta}",
+                'fecha': data.fecha.isoformat(),
+                'concepto': data.concepto,
+                'entrada': data.entrada,
+                'salida': data.salida,
+                'tipo': data.tipo,
+                'numero_documento': data.numero_documento or '',
+            },
+            user_id=current_user.id,
+            company_id=current_user.empresa_id,
+            document_id=mov.id,
+        )
+        if asiento_result:
+            mov.asiento_id = asiento_result.get('asiento_id')
+
     await db.commit()
     await db.refresh(mov)
     return mov
+
+
+class MovimientoBancoConfigurableCreate(BaseModel):
+    subtype_code: str
+    fecha: date
+    monto: float
+    concepto: str
+    cuenta_banco_id: uuid.UUID
+    tipo: str = "EGRESO"
+    numero_documento: str | None = None
+
+
+@router.post("/movimientos-configurables", status_code=201)
+async def registrar_movimiento_configurable(
+    data: MovimientoBancoConfigurableCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Usuario, Depends(get_current_user)],
+):
+    from app.service.document_engine import DocumentEngine
+
+    engine = DocumentEngine(db)
+    result = await engine.process(
+        document_type='MOV_BANCO',
+        subtype_code=data.subtype_code,
+        action='CREATE',
+        data={
+            'monto': data.monto,
+            'fecha': data.fecha.isoformat(),
+            'concepto': data.concepto,
+            'cuenta_banco_id': str(data.cuenta_banco_id),
+            'tipo': data.tipo,
+            'numero_documento': data.numero_documento or '',
+            'genera_asiento': True,
+        },
+        user_id=current_user.id,
+        company_id=current_user.empresa_id,
+    )
+    if not result.success:
+        raise HTTPException(status_code=400, detail='; '.join(result.errors))
+
+    return {
+        "document_id": str(result.document_id),
+        "numero": result.numero,
+        "asiento_id": str(result.asiento_id) if result.asiento_id else None,
+        "asiento_numero": result.asiento_numero,
+        "estado": result.estado,
+    }

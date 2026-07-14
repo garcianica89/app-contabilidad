@@ -18,11 +18,19 @@ from app.domain.models.producto import Producto
 from app.domain.models.cliente import Cliente
 from app.domain.models.proveedor import Proveedor
 from app.domain.models.caja import Caja, MovimientoCaja
+from app.domain.models.ejercicio import EjercicioFiscal
+from app.domain.accounting.models import AccountType, Account, JournalType
+from app.seeds.seed_modulos import seed_modulos
+from app.seeds.seed_accounting import seed_accounting
+from app.domain.accounting.seed_classifications import seed_classifications
 
 
 async def seed_database(db: AsyncSession):
     empresa = await db.execute(select(Empresa).where(Empresa.ruc == "TUCK001"))
-    if empresa.scalar_one_or_none():
+    emp = empresa.scalar_one_or_none()
+    if emp:
+        await seed_accounting(db, emp.id)
+        await db.commit()
         return
 
     moneda_nio = await db.execute(select(Moneda).where(Moneda.codigo == "NIO"))
@@ -56,6 +64,25 @@ async def seed_database(db: AsyncSession):
     )
     db.add(emp)
     await db.flush()
+
+    await seed_classifications(db)
+
+    await seed_modulos(db, emp.id)
+
+    # Crear ejercicio fiscal
+    existing_ej = await db.execute(
+        select(EjercicioFiscal).where(EjercicioFiscal.company_id == emp.id, EjercicioFiscal.codigo == '2026')
+    )
+    if not existing_ej.scalar_one_or_none():
+        ej = EjercicioFiscal(
+            company_id=emp.id,
+            codigo='2026',
+            nombre='Ejercicio 2026',
+            fecha_inicio=date(2026, 1, 1),
+            fecha_fin=date(2026, 12, 31),
+            cerrado=False,
+        )
+        db.add(ej)
 
     admin_rol = Rol(empresa_id=emp.id, nombre="ADMIN", descripcion="Administrador del sistema")
     db.add(admin_rol)
@@ -273,6 +300,8 @@ async def seed_database(db: AsyncSession):
         db.add(cuenta)
         await db.flush()
         padre_map[full_code] = cuenta.id
+
+    await seed_accounting(db, emp.id)
 
     await db.commit()
     print("Base de datos inicializada con datos semilla")

@@ -1,22 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Search, Database, Pencil, X, Check, AlertCircle } from 'lucide-react'
 import { api } from '../services/api'
-
-interface Producto {
-  id: string
-  codigo: string | null
-  nombre: string
-  costo_promedio: number
-  precio_venta: number
-  stock_actual: number
-  stock_minimo: number
-  unidad_medida: string
-  activo: boolean
-}
+import Skeleton from '../components/ui/Skeleton'
+import EmptyState from '../components/ui/EmptyState'
+import type { Producto, CuentaContable } from '../types/api'
 
 const emptyForm = {
   codigo: '', nombre: '', unidad_medida: 'UNIDAD',
-  precio_venta: 0, stock_minimo: 0,
+  precio_venta: 0, stock_minimo: 0, aplica_iva: true,
+  cuenta_compra_id: '', cuenta_venta_id: '', cuenta_inventario_id: '',
 }
 
 export default function InventarioPage() {
@@ -27,9 +19,16 @@ export default function InventarioPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [cuentas, setCuentas] = useState<CuentaContable[]>([])
 
   useEffect(() => {
-    api.getProductos().then(setItems).catch(() => {}).finally(() => setLoading(false))
+    Promise.all([
+      api.getProductos(),
+      api.getCuentasContables(),
+    ]).then(([prods, cts]) => {
+      setItems(prods)
+      setCuentas(cts.filter(c => c.acepta_datos))
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
   const filtered = items.filter((c) =>
@@ -45,6 +44,10 @@ export default function InventarioPage() {
       codigo: c.codigo || '', nombre: c.nombre,
       unidad_medida: c.unidad_medida || 'UNIDAD',
       precio_venta: c.precio_venta, stock_minimo: c.stock_minimo,
+      aplica_iva: c.aplica_iva,
+      cuenta_compra_id: c.cuenta_compra_id || '',
+      cuenta_venta_id: c.cuenta_venta_id || '',
+      cuenta_inventario_id: c.cuenta_inventario_id || '',
     })
     setShowForm(true)
   }
@@ -110,6 +113,39 @@ export default function InventarioPage() {
               <label className="block text-xs text-slate-400 mb-1">Stock Minimo</label>
               <input type="number" step="0.01" value={form.stock_minimo} onChange={(e) => setForm({ ...form, stock_minimo: Number(e.target.value) })} className="input-filter w-full" />
             </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">IVA</label>
+              <label className="flex items-center gap-1.5 text-xs text-slate-300 mt-1">
+                <input type="checkbox" checked={form.aplica_iva} onChange={(e) => setForm({ ...form, aplica_iva: e.target.checked })} className="rounded border-slate-600 bg-slate-700 text-primary-500" />
+                Aplica IVA
+              </label>
+            </div>
+          </div>
+          <div className="border-t border-slate-700/50 pt-4">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-3">Cuentas Contables</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Cuenta Compra</label>
+                <select value={form.cuenta_compra_id} onChange={(e) => setForm({ ...form, cuenta_compra_id: e.target.value })} className="input-filter w-full text-xs">
+                  <option value="">Sin asignar</option>
+                  {cuentas.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Cuenta Venta</label>
+                <select value={form.cuenta_venta_id} onChange={(e) => setForm({ ...form, cuenta_venta_id: e.target.value })} className="input-filter w-full text-xs">
+                  <option value="">Sin asignar</option>
+                  {cuentas.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Cuenta Inventario</label>
+                <select value={form.cuenta_inventario_id} onChange={(e) => setForm({ ...form, cuenta_inventario_id: e.target.value })} className="input-filter w-full text-xs">
+                  <option value="">Sin asignar</option>
+                  {cuentas.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
           <div className="flex gap-3">
             <button type="submit" disabled={saving} className="btn-primary flex items-center gap-2">
@@ -129,14 +165,9 @@ export default function InventarioPage() {
       </div>
 
       {loading ? (
-        <div className="card animate-pulse space-y-3">
-          {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-slate-700/50 rounded" />)}
-        </div>
+<Skeleton rows={5} />
       ) : filtered.length === 0 ? (
-        <div className="card text-center py-12 text-slate-500">
-          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          {search ? 'Ningun producto coincide con la busqueda' : 'No hay productos registrados'}
-        </div>
+        <EmptyState message={search ? 'Ningun producto coincide con la busqueda' : 'No hay productos registrados'} />
       ) : (
         <div className="card overflow-hidden !p-0">
           <div className="overflow-x-auto">

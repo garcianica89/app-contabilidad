@@ -1,5 +1,5 @@
 -- ============================================================
--- INFRAESTRUCTURA ADICIONAL (inspirado en Softland)
+-- INFRAESTRUCTURA ADICIONAL (inspirado en ERP)
 -- Tablas: tipo_cambio_hist, condicion_pago
 -- ============================================================
 

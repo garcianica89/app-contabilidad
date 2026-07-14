@@ -240,6 +240,7 @@ async def procesar_nomina(
         data=data,
         company_id=user.empresa_id,
         document_id=periodo.id,
+        user_id=user.id,
     )
     if asiento_result:
         periodo.asiento_id = asiento_result.get('asiento_id')
@@ -262,6 +263,23 @@ async def pagar_nomina(
         raise HTTPException(404)
     if periodo.estado != "PROCESADA":
         raise HTTPException(400, "Solo se puede pagar periodos procesados")
+
+    from app.service.accounting.accounting_engine import AccountingEngine
+    engine = AccountingEngine(db)
+    data = {
+        'periodo_codigo': periodo.codigo,
+        'monto': periodo.total_neto,
+        'fecha': periodo.fecha_pago.isoformat(),
+    }
+    await engine.generate_from_event(
+        event_type='PAGO_NOMINA',
+        module='nomina',
+        data=data,
+        company_id=user.empresa_id,
+        document_id=periodo.id,
+        user_id=user.id,
+    )
+
     periodo.estado = "PAGADA"
     await db.commit()
     await db.refresh(periodo)

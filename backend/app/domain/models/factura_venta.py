@@ -20,11 +20,31 @@ class FacturaVenta(Base):
     descuento: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     iva: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     total: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    aplica_iva: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    tasa_iva: Mapped[float | None] = mapped_column(Numeric(5, 2), default=None)
     moneda_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("moneda.id"), nullable=False)
     asiento_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(), ForeignKey("asiento.id"))
     estado: Mapped[str] = mapped_column(String(20), default="EMITIDA")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    retenciones: Mapped[list["FacturaVentaRetencion"]] = relationship(
+        back_populates="factura", cascade="all, delete-orphan"
+    )
+
+
+class FacturaVentaRetencion(Base):
+    __tablename__ = "factura_venta_retencion"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=uuid.uuid4)
+    factura_venta_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("factura_venta.id", ondelete="CASCADE"), nullable=False)
+    retencion_id: Mapped[uuid.UUID] = mapped_column(Uuid(), ForeignKey("retencion.id", ondelete="CASCADE"), nullable=False)
+    base_imponible: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    monto_retenido: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    factura = relationship("FacturaVenta", back_populates="retenciones")
+    retencion = relationship("Retencion")
 
 
 class FacturaVentaLinea(Base):
@@ -37,3 +57,5 @@ class FacturaVentaLinea(Base):
     precio_unitario: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
     descuento: Mapped[float] = mapped_column(Numeric(14, 2), default=0)
     subtotal: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    aplica_iva: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    tasa_iva: Mapped[float | None] = mapped_column(Numeric(5, 2), default=None)
